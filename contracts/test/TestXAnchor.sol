@@ -64,12 +64,12 @@ contract TestXAnchor is ERC20Upgradeable {
         );
     }
 
-    function redeemStableStep2(uint256 amtAUST) external {
+    function redeemStableStep2(address to, uint256 amtAUST) external {
         uint256 amtUST = getAmountOut(amtAUST);
 
         SafeTransferLib.safeTransfer(
             UST,
-            msg.sender,
+            to,
             amtUST
         );
     }
