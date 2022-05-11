@@ -63,19 +63,32 @@ contract TestSwapFacility is DSTest {
     }
 
     function testSwapAmountOut() public {
-        uint256 depositedUST = 10000;
+        uint256 depositedUST = 1248325249482323000;
+        uint256 swappedUST = 12483252494823230;
+
         xAnchor.depositStable(address(UST), depositedUST);
         assertTrue(UST.balanceOf(address(this)) == (ustAmt - depositedUST));
 
-        vm.roll(block.number + 5);
+        vm.roll(block.number + 5); //simulates relayer's delay
 
         xAnchor.depositStableStep2(depositedUST);
         assertTrue(aUST.balanceOf(address(this)) == xAnchor.getAmountIn(depositedUST));
 
-        sFacility.swapAmountOut(depositedUST);
+        uint256 aUSTBalance = aUST.balanceOf(address(sFacility));
+        uint256 preAUST = aUST.balanceOf(address(this));
+        sFacility.swapAmountOut(swappedUST);
+        assertTrue(UST.balanceOf(address(this)) == swappedUST);
+        uint256 deductedAUST = (xAnchor.getAmountIn(swappedUST)) * 10000 / (10000 - 100); // %1 swap fee
+        uint256 postAUST = preAUST - deductedAUST;
+        assertTrue(aUST.balanceOf(address(this)) == postAUST);
 
-        uint256 amtAUST = xAnchor.getAmountIn(depositedUST);
-        xAnchor.redeemStableStep2(amtAUST);
-        console.log(aUST.balanceOf(address(this)));
+        vm.roll(block.number + 5); //simulates relayer's delay
+
+        uint256 aUSTNewBalance = aUSTBalance + deductedAUST;
+        uint256 preUST = UST.balanceOf(address(sFacility));
+        xAnchor.redeemStableStep2(address(sFacility), aUSTNewBalance);
+        uint256 postUST = preUST + xAnchor.getAmountOut(aUSTNewBalance);
+        assertTrue(UST.balanceOf(address(sFacility)) == postUST);
+        assertTrue(aUST.balanceOf(address(sFacility)) == 0);
     }
 }
