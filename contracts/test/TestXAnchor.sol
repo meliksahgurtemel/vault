@@ -13,12 +13,10 @@ contract TestXAnchor is ERC20Upgradeable {
 
     constructor(
         address _UST,
-        address _priceFeed,
-        int256 _price
+        address _priceFeed
     ) {
         UST = ERC20(_UST);
         priceFeed = TestAggregatorV3(_priceFeed);
-        priceFeed.setPrice(_price);
         initializeERC20("Anchor Terra USD", "aUST", 6);
     }
 
@@ -50,9 +48,9 @@ contract TestXAnchor is ERC20Upgradeable {
         );
     }
 
-    function depositStableStep2(uint256 amtUST) external {
+    function depositStableStep2(address to, uint256 amtUST) external {
         uint256 amtAUST = getAmountIn(amtUST);
-        _mint(msg.sender, amtAUST);
+        _mint(to, amtAUST);
     }
 
     function redeemStable(address token, uint256 amtAUST) external {
