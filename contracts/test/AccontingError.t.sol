@@ -5,14 +5,14 @@ import "ds-test/test.sol";
 import "forge-std/console.sol";
 import "forge-std/stdlib.sol";
 import "forge-std/Vm.sol";
-import "./TestCompVault.sol";
+import "src/CompVault.sol";
 import "./TestcToken.sol";
 import "./TestRewardController.sol";
 
 contract TestAccountingError is DSTest {
 
     TestcToken public usdc;
-    TestCompVault public vault;
+    CompVault public vault;
     TestRewardController public rewardController;
     Vm public constant vm = Vm(HEVM_ADDRESS);
 
@@ -36,7 +36,7 @@ contract TestAccountingError is DSTest {
             "WAVAX",
             18
         );
-        vault = new TestCompVault();
+        vault = new CompVault();
         vault.initialize(
             address(usdc),
             "Vault",
