@@ -73,6 +73,6 @@ contract TestAccountingError is DSTest {
         rewardController.setRewardAmt(totalRewards);
         vault.deposit(address(this), MINT_AMT / 2);
         console.log(usdc.balanceOf(FEE_RECIPIENT));
-        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == 90);
+        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == 120);
     }
 }
