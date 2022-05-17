@@ -18,6 +18,6 @@ contract TestcToken is TestERC20 {
     }
 
     function balanceOfUnderlying(address account) public returns (uint) {
-        return balanceOf(account);
+        return balanceOf[account];
     }
 }
