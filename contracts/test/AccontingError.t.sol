@@ -67,12 +67,16 @@ contract TestAccountingError is DSTest {
         console.log(vault.balanceOf(address(this)));
         vm.stopPrank();
 
-        vm.wrap(vault.lastReinvestTime() + 3601);
+        vm.warp(vault.lastReinvestTime() + 3601);
 
-        uint256 totalRewards = (1*1e17) * (30 + 90); // assume 0.1 WAVAX reward given every 1 min.
+        uint256 totalRewards = (1*1e17) * (30 + 90); // assume 0.1 WAVAX reward given every min.
         rewardController.setRewardAmt(totalRewards);
         vault.deposit(address(this), MINT_AMT / 2);
         console.log(usdc.balanceOf(FEE_RECIPIENT));
-        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == 120);
+        // In 1h stale, there are 2 depositors but one of them deposited 30 min before the stale is finished.
+        // So, 12 WAVAX rewards in total.
+        // Assume WAVAX is 50$ and it makes 600 USDC.
+        // %20 of the USDC goes to the fee recipient.
+        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == (120 * 1e18));
     }
 }
