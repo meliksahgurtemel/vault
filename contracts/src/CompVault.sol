@@ -69,8 +69,10 @@ contract CompVault is Vault {
 
         //simulate swap
         uint256 rewardBalance = rewardController.balanceOf(address(this));
+        uint256 usdcBalance = rewardBalance * 50 / 1e12; // USDC has 6 decimal
+        uint256 qiUSDCBalance = usdcBalance * 10**2 * 1e18 / cToken.exchangeRateCurrent(); // qiUSDC has 8 decimal
         rewardController.burn(address(this), rewardBalance);
-        cToken.mint(address(this), (rewardBalance * 50));
+        cToken.mint(address(this), qiUSDCBalance);
 
         uint256 postCompoundUnderlyingValue = _getValueOfUnderlyingPost();
         uint256 profitInValue = postCompoundUnderlyingValue - preCompoundUnderlyingValue;
