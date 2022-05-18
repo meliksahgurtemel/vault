@@ -11,7 +11,7 @@ import "./TestRewardController.sol";
 
 contract TestAccountingError is DSTest {
 
-    TestcToken public usdc;
+    TestcToken public qiUSDC;
     CompVault public vault;
     TestRewardController public rewardController;
     Vm public constant vm = Vm(HEVM_ADDRESS);
@@ -20,16 +20,16 @@ contract TestAccountingError is DSTest {
     uint256 public CALLER_FEE = 100;
     uint256 public MAX_REINVEST_STALE = 1 hours;
     uint256 public MAX_INT = 2**256 - 1;
-    uint256 public MINT_AMT = 100 * 1e18;
+    uint256 public MINT_AMT = 100 * 1e8; // 100 qiUSDC
 
     address public FEE_RECIPIENT = 0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664;
     address public USER = 0xCe2CC46682E9C6D5f174aF598fb4931a9c0bE68e;
 
     function setUp() public {
-        usdc = new TestcToken(
-            "USD Coin",
-            "USDC",
-            18
+        qiUSDC = new TestcToken(
+            "Benqi USDC",
+            "qiUSDC",
+            8
         );
         rewardController = new TestRewardController(
             "Wrapped AVAX",
@@ -38,7 +38,7 @@ contract TestAccountingError is DSTest {
         );
         vault = new CompVault();
         vault.initialize(
-            address(usdc),
+            address(qiUSDC),
             "Vault",
             "VAULT",
             ADMIN_FEE,
@@ -47,9 +47,10 @@ contract TestAccountingError is DSTest {
             address(rewardController),
             address(rewardController)
         );
-        usdc.mint(address(this), MINT_AMT);
-        usdc.mint(USER, MINT_AMT);
-        usdc.approve(address(vault), MAX_INT);
+        qiUSDC.mint(address(this), MINT_AMT);
+        qiUSDC.mint(USER, MINT_AMT);
+        qiUSDC.approve(address(vault), MAX_INT);
+        qiUSDC.setExchangeRate(1000000000000000000);
 
         vault.pushRewardToken(address(rewardController));
         vault.setFeeRecipient(FEE_RECIPIENT);
@@ -62,7 +63,7 @@ contract TestAccountingError is DSTest {
         vm.warp(vault.lastReinvestTime() + 1800); // plus 30 min
 
         vm.startPrank(USER);
-        usdc.approve(address(vault), MAX_INT);
+        qiUSDC.approve(address(vault), MAX_INT);
         vault.deposit(address(this), MINT_AMT / 2);
         console.log(vault.balanceOf(address(this)));
         vm.stopPrank();
@@ -72,13 +73,13 @@ contract TestAccountingError is DSTest {
         uint256 totalRewards = (1*1e17) * (30 + 60); // assume 0.1 WAVAX rewards are given every min.
         rewardController.setRewardAmt(totalRewards);
         vault.deposit(address(this), MINT_AMT / 2);
-        console.log(usdc.balanceOf(FEE_RECIPIENT));
+        console.log(qiUSDC.balanceOf(FEE_RECIPIENT));
         // In 1h stale, there are 2 depositors but one of them deposited 30 min before the stale is finished.
         // Since one depositer deposited in the middle, there are rewards for only %20 * 30min from that deposit.
         // So, (%20 * 30min) + (%20 * 60min) = 9 WAVAX rewards in total.
-        // Assume WAVAX is 50$ and it makes 450 USDC.
-        // %20 of the USDC goes to the fee recipient.
-        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == (90 * 1e18));
+        // Assume WAVAX is 50$ and qiUSDC to USDC ratio is 1. So, it makes 450 qiUSDC.
+        // %20 of the qiUSDC goes to the fee recipient.
+        assertTrue(qiUSDC.balanceOf(FEE_RECIPIENT) == (90 * 1e8));
     }
 
     function testAccError2() public {
@@ -88,7 +89,7 @@ contract TestAccountingError is DSTest {
         vm.warp(vault.lastReinvestTime() + 1800); // plus 30 min
 
         vm.startPrank(USER);
-        usdc.approve(address(vault), MAX_INT);
+        qiUSDC.approve(address(vault), MAX_INT);
         vault.deposit(address(this), MINT_AMT / 2);
         console.log(vault.balanceOf(address(this)));
         vm.stopPrank();
@@ -98,13 +99,68 @@ contract TestAccountingError is DSTest {
         uint256 totalRewards = (1*1e17) * (30 + 60); // assume 0.1 WAVAX rewards are given every min.
         rewardController.setRewardAmt(totalRewards);
         vault.deposit(address(this), MINT_AMT / 2);
-        console.log(usdc.balanceOf(FEE_RECIPIENT));
+        console.log(qiUSDC.balanceOf(FEE_RECIPIENT));
         // In 1h stale, there are 2 depositors but one of them deposited 30 min before the stale is finished.
         // Since one depositer deposited in the middle, there are rewards for only %20 * 30min from that deposit.
         // So, (%20 * 30min) + (%20 * 60min) = 9 WAVAX rewards in total.
-        // However, it should be (%20 * 60min) + (%20 * 60min) = 12 WAVAX rewards.
-        // Assume WAVAX is 50$ and with the correct accounting it makes 600 USDC.
-        // %20 of the USDC goes to the fee recipient.
-        assertTrue(usdc.balanceOf(FEE_RECIPIENT) == (120 * 1e18)); // expected to fail
+        // However, it should be (%20 * 60min) + (%20 * 60min) = 12 WAVAX rewards in 1h stale.
+        // Assume WAVAX is 50$ and qiUSDC to USDC ratio is 1. So, with the correct accounting it should be 600 qiUSDC.
+        // %20 of the qiUSDC goes to the fee recipient.
+        assertTrue(qiUSDC.balanceOf(FEE_RECIPIENT) == (120 * 1e8)); // expected to fail because of the accounting error
+    }
+
+    function testIncreasingRatio() public {
+        qiUSDC.setExchangeRate(1200000000000000000); // 1 qiUSDC = 1.2 USDC ratio
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(vault.balanceOf(address(this)));
+
+        vm.warp(vault.lastReinvestTime() + 1800); // plus 30 min
+
+        vm.startPrank(USER);
+        qiUSDC.approve(address(vault), MAX_INT);
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(vault.balanceOf(address(this)));
+        vm.stopPrank();
+
+        vm.warp(vault.lastReinvestTime() + 3601);
+
+        uint256 totalRewards = (1*1e17) * (30 + 60); // assume 0.1 WAVAX rewards are given every min.
+        rewardController.setRewardAmt(totalRewards);
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(qiUSDC.balanceOf(FEE_RECIPIENT));
+        // In 1h stale, there are 2 depositors but one of them deposited 30 min before the stale is finished.
+        // Since one depositer deposited in the middle, there are rewards for only %20 * 30min from that deposit.
+        // So, (%20 * 30min) + (%20 * 60min) = 9 WAVAX rewards in total.
+        // Assume WAVAX is 50$ and qiUSDC to USDC ratio is 1.2, so, it makes 375 qiUSDC.
+        // %20 of the qiUSDC goes to the fee recipient.
+        assertTrue(qiUSDC.balanceOf(FEE_RECIPIENT) == (75 * 1e8));
+    }
+
+    function testIncreasingRatio2() public {
+        qiUSDC.setExchangeRate(1200000000000000000); // 1 qiUSDC = 1.2 USDC ratio
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(vault.balanceOf(address(this)));
+
+        vm.warp(vault.lastReinvestTime() + 1800); // plus 30 min
+
+        vm.startPrank(USER);
+        qiUSDC.approve(address(vault), MAX_INT);
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(vault.balanceOf(address(this)));
+        vm.stopPrank();
+
+        vm.warp(vault.lastReinvestTime() + 3601);
+
+        uint256 totalRewards = (1*1e17) * (30 + 60); // assume 0.1 WAVAX rewards are given every min.
+        rewardController.setRewardAmt(totalRewards);
+        vault.deposit(address(this), MINT_AMT / 2);
+        console.log(qiUSDC.balanceOf(FEE_RECIPIENT));
+        // In 1h stale, there are 2 depositors but one of them deposited 30 min before the stale is finished.
+        // Since one depositer deposited in the middle, there are rewards for only %20 * 30min from that deposit.
+        // So, (%20 * 30min) + (%20 * 60min) = 9 WAVAX rewards in total.
+        // However, it should be (%20 * 60min) + (%20 * 60min) = 12 WAVAX rewards in 1h stale.
+        // Assume WAVAX is 50$ and qiUSDC to USDC ratio is 1.2. So, with the correct accounting it should be 500 qiUSDC.
+        // %20 of the qiUSDC goes to the fee recipient.
+        assertTrue(qiUSDC.balanceOf(FEE_RECIPIENT) == (100 * 1e8)); // expected to fail because of the accounting error
     }
 }
