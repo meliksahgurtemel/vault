@@ -2,12 +2,15 @@
 pragma solidity 0.8.10;
 
 import "src/Vault.sol";
+import {sAVAX} from "src/interfaces/sAVAX.sol";
 import {IcToken} from "src/interfaces/cToken.sol";
+
 
 contract qisAVAXVault is Vault {
 
     IcToken public qisAVAX;
-    uint256 public lastqisAVAXUnderlyingBalance;
+    address public sAVAXAddr;
+    uint256 public lastsAVAXUnderlyingBalance;
 
     function _initialize(
         address _underlying,
@@ -16,7 +19,8 @@ contract qisAVAXVault is Vault {
         uint256 _adminFee,
         uint256 _callerFee,
         uint256 _maxReinvestStale,
-        address _WAVAX
+        address _WAVAX,
+        address _sAVAX
     ) public {
         initialize(
             _underlying,
@@ -27,30 +31,36 @@ contract qisAVAXVault is Vault {
             _maxReinvestStale,
             _WAVAX
         );
+        sAVAXAddr = _sAVAX;
         qisAVAX = IcToken(address(underlying));
     }
 
     function _getValueOfUnderlyingPre() internal override returns (uint256) {
-        return lastqisAVAXUnderlyingBalance;
+        return lastsAVAXUnderlyingBalance;
     }
 
     function _getValueOfUnderlyingPost() internal override returns (uint256) {
-        return qisAVAX.balanceOfUnderlying(address(this));
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        return sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
     }
 
     function totalHoldings() public override returns (uint256) {
-        return qisAVAX.balanceOfUnderlying(address(this));
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        return sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
     }
 
     function _triggerDepositAction(uint256 amtToReturn) internal override {
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
     }
 
     function _triggerWithdrawAction(uint256 amtToReturn) internal override {
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e18);
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e18);
+        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance - amtToReturn);
     }
 
     function _doSomethingPostCompound() internal override {
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
     }
 }
