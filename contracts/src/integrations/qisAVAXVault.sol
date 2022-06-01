@@ -5,14 +5,13 @@ import "src/Vault.sol";
 import {sAVAX} from "src/interfaces/sAVAX.sol";
 import {IcToken} from "src/interfaces/cToken.sol";
 
-
 contract qisAVAXVault is Vault {
 
     IcToken public qisAVAX;
     address public sAVAXAddr;
     uint256 public lastsAVAXUnderlyingBalance;
 
-    function _initialize(
+    function initialize(
         address _underlying,
         string memory _name,
         string memory _symbol,
@@ -55,8 +54,8 @@ contract qisAVAXVault is Vault {
     }
 
     function _triggerWithdrawAction(uint256 amtToReturn) internal override {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e18);
-        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance - amtToReturn);
+        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8);
+        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
     }
 
     function _doSomethingPostCompound() internal override {
