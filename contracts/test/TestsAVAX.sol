@@ -3,7 +3,7 @@ pragma solidity 0.8.10;
 
 import "./TestERC20.sol";
 
-contract TestcToken is TestERC20 {
+contract TestsAVAX is TestERC20 {
 
     uint public exchangeRate;
 
@@ -13,11 +13,11 @@ contract TestcToken is TestERC20 {
         exchangeRate = _exchangeRate;
     }
 
-    function exchangeRateCurrent() public returns (uint) {
+    function getExchangeRate() public view returns (uint) {
         return exchangeRate;
     }
 
-    function balanceOfUnderlying(address account) public returns (uint) {
-        return balanceOf[account] * exchangeRateCurrent() / 1e8;
+    function getPooledAvaxByShares(uint shareAmount) public view returns (uint) {
+        return shareAmount * getExchangeRate() / 1e18;
     }
 }
