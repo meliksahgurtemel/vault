@@ -9,7 +9,8 @@ contract qisAVAXVault is Vault {
 
     IcToken public qisAVAX;
     address public sAVAXAddr;
-    uint256 public lastsAVAXUnderlyingBalance;
+    uint256 public lastqisAVAXUnderlyingBalance;
+    uint256 public underlyingBalanceAtLastCompound;
 
     function initialize(
         address _underlying,
@@ -35,31 +36,29 @@ contract qisAVAXVault is Vault {
     }
 
     function _getValueOfUnderlyingPre() internal override returns (uint256) {
-        return lastsAVAXUnderlyingBalance;
+        return underlyingBalanceAtLastCompound;
     }
 
     function _getValueOfUnderlyingPost() internal override returns (uint256) {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
-        return sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
+        return qisAVAX.balanceOfUnderlying(address(this));
     }
 
     function totalHoldings() public override returns (uint256) {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
-        return sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
+        return qisAVAX.balanceOfUnderlying(address(this));
     }
 
-    function _triggerDepositAction(uint256 amtToReturn) internal override {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
-        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
+    function _triggerDepositAction(uint256 amt) internal override {
+        underlyingBalanceAtLastCompound += (amt * qisAVAX.exchangeRateCurrent()) / 1e8;
+        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
     }
 
     function _triggerWithdrawAction(uint256 amtToReturn) internal override {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8);
-        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
+        underlyingBalanceAtLastCompound -= (amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8;
+        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8);
     }
 
     function _doSomethingPostCompound() internal override {
-        uint256 qisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
-        lastsAVAXUnderlyingBalance = sAVAX(sAVAXAddr).getPooledAvaxByShares(qisAVAXUnderlyingBalance);
+        underlyingBalanceAtLastCompound = qisAVAX.balanceOfUnderlying(address(this));
+        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
     }
 }
