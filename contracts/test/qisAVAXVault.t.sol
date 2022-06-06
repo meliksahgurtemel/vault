@@ -7,11 +7,9 @@ import "forge-std/stdlib.sol";
 import "forge-std/Vm.sol";
 import "src/integrations/qisAVAXVault.sol";
 import "./TestcToken.sol";
-import "./TestsAVAX.sol";
 
 contract TestqisAVAXVault is DSTest {
 
-    TestsAVAX public sAVAX;
     TestcToken public qisAVAX;
     qisAVAXVault public vault;
     Vm public constant vm = Vm(HEVM_ADDRESS);
@@ -32,27 +30,24 @@ contract TestqisAVAXVault is DSTest {
             "qisAVAX",
             8
         );
-        sAVAX = new TestsAVAX(
-            "Staked AVAX",
-            "sAVAX",
-            18
-        );
         vault = new qisAVAXVault();
-        vault.initialize(
+        vault._initialize(
             address(qisAVAX),
             "Vault",
             "VAULT",
             ADMIN_FEE,
             CALLER_FEE,
             MAX_REINVEST_STALE,
-            WAVAX,
-            address(sAVAX)
+            WAVAX
         );
         qisAVAX.mint(address(this), MINT_AMT);
         qisAVAX.mint(USER, MINT_AMT);
         qisAVAX.approve(address(vault), MAX_INT);
-        qisAVAX.setExchangeRate(1050000000000000000); // 1 qisAVAX = 1.05 sAVAX ratio
-        sAVAX.setExchangeRate(1070000000000000000); // 1 sAVAX = 1.07 AVAX ratio
+        qisAVAX.setExchangeRate(1000000000000000000); // 1 qisAVAX = 1.05 sAVAX ratio
+
+        vm.startPrank(USER);
+        qisAVAX.approve(address(vault), MAX_INT);
+        vm.stopPrank();
 
         vault.setFeeRecipient(FEE_RECIPIENT);
     }
@@ -103,23 +98,41 @@ contract TestqisAVAXVault is DSTest {
         assertTrue(postBalanceToken == preBalanceToken + ((amt * 1e18 - vault.FIRST_DONATION()) / 1e10));
     }
 
-    function testDepositAndCompound(uint amt) public {
-        vm.assume(amt > 0);
-        vm.assume(amt < 101);
+    function testCompound() public {
+        vault.deposit(address(this), MINT_AMT);
+        assertTrue(qisAVAX.balanceOf(address(vault)) == MINT_AMT);
+        assertTrue(vault.balanceOf(address(this)) == MINT_AMT * 1e10 - vault.FIRST_DONATION());
 
-        vault.deposit(address(this), amt * 1e8);
-        assertTrue(qisAVAX.balanceOf(address(vault)) == amt * 1e8);
-        assertTrue(vault.balanceOf(address(this)) == amt * 1e18 - vault.FIRST_DONATION());
+        vm.warp(vault.lastReinvestTime() + 1800); // half of the stale
 
-        vm.warp(vault.lastReinvestTime() + 3601); // +1h
+        qisAVAX.setExchangeRate(1010000000000000000); // 1 qisAVAX = 1.01 sAVAX
 
-        sAVAX.setExchangeRate(1100000000000000000); // set exchange rate to %10
-        uint256 preBalanceToken = qisAVAX.balanceOf(FEE_RECIPIENT);
-        uint256 preBalanceVault = qisAVAX.balanceOf(address(vault));
-        vault.compound();
-        uint256 postBalanceToken = qisAVAX.balanceOf(FEE_RECIPIENT);
-        uint256 postBalanceVault = qisAVAX.balanceOf(address(vault));
-        assertTrue(postBalanceToken > preBalanceToken);
-        assertTrue(postBalanceVault < preBalanceVault);
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 10);
+        vm.stopPrank();
+
+        qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
+
+        vm.warp(vault.lastReinvestTime() + 3601); // end of the stale
+
+        uint256 qisAVAXBalanceUserPre = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceVaultPre = qisAVAX.balanceOf(address(vault));
+        uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
+        uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
+        uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
+
+        uint256 profit = (currentUnderlyingBalance - underlyingBalanceAtLastCompound) * ADMIN_FEE / 10000;
+        uint256 profitInUnderlying = profit * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
+        uint256 callerFee = (profitInUnderlying * CALLER_FEE) / 10000;
+
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 10);
+        vm.stopPrank();
+
+        uint256 qisAVAXBalanceUserPost = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceVaultPost = qisAVAX.balanceOf(address(vault));
+        assertTrue(qisAVAXBalanceVaultPost == qisAVAXBalanceVaultPre + (MINT_AMT / 10) - profitInUnderlying - callerFee);
+        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == profitInUnderlying);
+        assertTrue(qisAVAXBalanceUserPost + (MINT_AMT / 10) - qisAVAXBalanceUserPre == callerFee);
     }
 }
