@@ -96,20 +96,21 @@ contract qisAVAXVault is Vault {
             }
         }
         uint256 currentUnderlyingBalance = _getValueOfUnderlyingPost();
-        uint256 profitInValue = Math.min((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * adminFee / 10000, currentUnderlyingBalance - lastUnderlyingBalance);
-        if (profitInValue > 0) {
+        uint256 totalFeeInValue = Math.min((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (adminFee + callerFee) / 10000, currentUnderlyingBalance - lastUnderlyingBalance);
+        if (totalFeeInValue > 0) {
             // convert the profit in value to profit in underlying
-            uint256 profitInUnderlying = profitInValue * underlying.balanceOf(address(this)) / currentUnderlyingBalance;
-            uint256 callerAmt = (profitInUnderlying * callerFee) / 10000;
+            uint256 totalFeeInUnderlying = totalFeeInValue * underlying.balanceOf(address(this)) / currentUnderlyingBalance;
+            uint256 adminAmt = totalFeeInUnderlying * adminFee / (adminFee + callerFee);
+            uint256 callerAmt = totalFeeInUnderlying * callerFee / (adminFee + callerFee);
 
-            SafeTransferLib.safeTransfer(underlying, feeRecipient, profitInUnderlying);
+            SafeTransferLib.safeTransfer(underlying, feeRecipient, adminAmt);
             SafeTransferLib.safeTransfer(underlying, msg.sender, callerAmt);
             emit Reinvested(
                 msg.sender,
                 lastUnderlyingBalance,
                 currentUnderlyingBalance
             );
-            emit AdminFeePaid(feeRecipient, profitInUnderlying);
+            emit AdminFeePaid(feeRecipient, adminAmt);
             emit CallerFeePaid(msg.sender, callerAmt);
             // For tokens which have to deposit their newly minted tokens to deposit them into another contract,
             // call that action. New tokens = current balance of underlying.

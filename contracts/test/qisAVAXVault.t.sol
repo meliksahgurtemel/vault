@@ -16,7 +16,7 @@ contract TestqisAVAXVault is DSTest {
 
     uint256 public ADMIN_FEE = 2000;
     uint256 public CALLER_FEE = 100;
-    uint256 public MAX_REINVEST_STALE = 1 hours;
+    uint256 public MAX_REINVEST_STALE = 1 days;
     uint256 public MAX_INT = 2**256 - 1;
     uint256 public MINT_AMT = 100 * 1e8; // 100 qisAVAX
 
@@ -43,7 +43,7 @@ contract TestqisAVAXVault is DSTest {
         qisAVAX.mint(address(this), MINT_AMT);
         qisAVAX.mint(USER, MINT_AMT);
         qisAVAX.approve(address(vault), MAX_INT);
-        qisAVAX.setExchangeRate(1000000000000000000); // 1 qisAVAX = 1.05 sAVAX ratio
+        qisAVAX.setExchangeRate(1000000000000000000); // 1 qisAVAX = 1 sAVAX
 
         vm.startPrank(USER);
         qisAVAX.approve(address(vault), MAX_INT);
@@ -98,13 +98,12 @@ contract TestqisAVAXVault is DSTest {
         assertTrue(postBalanceToken == preBalanceToken + ((amt * 1e18 - vault.FIRST_DONATION()) / 1e10));
     }
 
-    function testCompound() public {
+    function testDepositAndCompound() public {
         vault.deposit(address(this), MINT_AMT);
         assertTrue(qisAVAX.balanceOf(address(vault)) == MINT_AMT);
         assertTrue(vault.balanceOf(address(this)) == MINT_AMT * 1e10 - vault.FIRST_DONATION());
 
-        vm.warp(vault.lastReinvestTime() + 1800); // half of the stale
-
+        vm.warp(vault.lastReinvestTime() + 12 hours); // half of the stale
         qisAVAX.setExchangeRate(1010000000000000000); // 1 qisAVAX = 1.01 sAVAX
 
         vm.startPrank(USER);
@@ -112,27 +111,147 @@ contract TestqisAVAXVault is DSTest {
         vm.stopPrank();
 
         qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
+        vm.warp(vault.lastReinvestTime() + 1 + 24 hours); // end of the stale
 
-        vm.warp(vault.lastReinvestTime() + 3601); // end of the stale
-
-        uint256 qisAVAXBalanceUserPre = qisAVAX.balanceOf(USER);
-        uint256 qisAVAXBalanceVaultPre = qisAVAX.balanceOf(address(vault));
+        uint256 qisAVAXBalanceOfUserPre = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceOfVaultPre = qisAVAX.balanceOf(address(vault));
         uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
         uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
         uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
 
-        uint256 profit = (currentUnderlyingBalance - underlyingBalanceAtLastCompound) * ADMIN_FEE / 10000;
-        uint256 profitInUnderlying = profit * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
-        uint256 callerFee = (profitInUnderlying * CALLER_FEE) / 10000;
+        uint256 totalFee = (currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000;
+        uint256 totalFeeInUnderlying = totalFee * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
+        uint256 adminFeeAmt = totalFeeInUnderlying * ADMIN_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 callerFeeAmt = totalFeeInUnderlying * CALLER_FEE / (ADMIN_FEE + CALLER_FEE);
 
         vm.startPrank(USER);
         vault.deposit(USER, MINT_AMT / 10);
         vm.stopPrank();
 
-        uint256 qisAVAXBalanceUserPost = qisAVAX.balanceOf(USER);
-        uint256 qisAVAXBalanceVaultPost = qisAVAX.balanceOf(address(vault));
-        assertTrue(qisAVAXBalanceVaultPost == qisAVAXBalanceVaultPre + (MINT_AMT / 10) - profitInUnderlying - callerFee);
-        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == profitInUnderlying);
-        assertTrue(qisAVAXBalanceUserPost + (MINT_AMT / 10) - qisAVAXBalanceUserPre == callerFee);
+        uint256 qisAVAXBalanceOfUserPost = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceOfVaultPost = qisAVAX.balanceOf(address(vault));
+        uint256 qisAVAXUnderlyingBalance = vault.underlyingPerReceipt() * vault.balanceOf(address(this)) / 1e18;
+
+        assertTrue(qisAVAXUnderlyingBalance >= MINT_AMT - vault.FIRST_DONATION());
+        assertTrue(qisAVAXBalanceOfVaultPost == qisAVAXBalanceOfVaultPre + (MINT_AMT / 10) - totalFeeInUnderlying + 1);
+        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == adminFeeAmt);
+        assertTrue(qisAVAXBalanceOfUserPost + (MINT_AMT / 10) - qisAVAXBalanceOfUserPre == callerFeeAmt);
+    }
+
+    function testDepositAndCompoundFuzz(uint amt) public {
+        vm.assume(amt > 0);
+        vm.assume(amt < 11);
+
+        uint256 NEW_MIN_AMT = 1000 * 1e8 * amt;
+        qisAVAX.mint(address(this), NEW_MIN_AMT);
+
+        vault.deposit(address(this), NEW_MIN_AMT);
+        assertTrue(qisAVAX.balanceOf(address(vault)) == NEW_MIN_AMT);
+        assertTrue(vault.balanceOf(address(this)) == NEW_MIN_AMT * 1e10 - vault.FIRST_DONATION());
+
+        vm.warp(vault.lastReinvestTime() + 12 hours); // half of the stale
+        qisAVAX.setExchangeRate(1010000000000000000); // 1 qisAVAX = 1.01 sAVAX
+
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 10);
+        vm.stopPrank();
+
+        qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
+        vm.warp(vault.lastReinvestTime() + 1 + 24 hours); // end of the stale
+
+        uint256 qisAVAXBalanceOfUserPre = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceOfVaultPre = qisAVAX.balanceOf(address(vault));
+        uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
+        uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
+        uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
+
+        uint256 totalFee = (currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000;
+        uint256 totalFeeInUnderlying = totalFee * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
+        uint256 adminFeeAmt = totalFeeInUnderlying * ADMIN_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 callerFeeAmt = totalFeeInUnderlying * CALLER_FEE / (ADMIN_FEE + CALLER_FEE);
+
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 10);
+        vm.stopPrank();
+
+        uint256 qisAVAXBalanceOfUserPost = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXBalanceOfVaultPost = qisAVAX.balanceOf(address(vault));
+        uint256 qisAVAXUnderlyingBalance = vault.underlyingPerReceipt() * vault.balanceOf(address(this)) / 1e18;
+
+        assertTrue(qisAVAXUnderlyingBalance >= MINT_AMT - vault.FIRST_DONATION());
+        assertTrue(qisAVAXBalanceOfVaultPost == qisAVAXBalanceOfVaultPre + (MINT_AMT / 10) - totalFeeInUnderlying + 1);
+        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == adminFeeAmt);
+        assertTrue(qisAVAXBalanceOfUserPost + (MINT_AMT / 10) - qisAVAXBalanceOfUserPre == callerFeeAmt);
+    }
+
+    function testRedeemAndCompound() public {
+        vault.deposit(address(this), MINT_AMT);
+        assertTrue(qisAVAX.balanceOf(address(vault)) == MINT_AMT);
+        assertTrue(vault.balanceOf(address(this)) == MINT_AMT * 1e10 - vault.FIRST_DONATION());
+
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 5);
+        vm.stopPrank();
+
+        vm.warp(vault.lastReinvestTime() + 12 hours); // half of the stale
+        qisAVAX.setExchangeRate(1010000000000000000); // 1 qisAVAX = 1.01 sAVAX
+
+        vm.startPrank(USER);
+        uint256 vaultBalance = vault.balanceOf(USER);
+        vault.redeem(vaultBalance / 2);
+        vm.stopPrank();
+
+        qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
+        vm.warp(vault.lastReinvestTime() + 1 + 24 hours); // end of the stale
+
+        uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
+        uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
+        uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
+
+        uint256 totalFee = (currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000;
+        uint256 totalFeeInUnderlying = totalFee * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
+        uint256 adminFeeAmt = totalFeeInUnderlying * ADMIN_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 callerFeeAmt = totalFeeInUnderlying * CALLER_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 vaultTokenBalanceOfUserPre = vault.balanceOf(USER);
+
+        vm.startPrank(USER);
+        vault.redeem(vault.balanceOf(USER));
+        vm.stopPrank();
+
+        uint256 qisAVAXBalanceOfUserPre = 90 * 1e8;
+        uint256 qisAVAXBalanceOfUserPost = qisAVAX.balanceOf(USER);
+        uint256 qisAVAXReturnedToUser = vaultTokenBalanceOfUserPre * vault.underlyingPerReceipt() / 1e18;
+        uint256 qisAVAXBalanceOfVaultPre = 110 * 1e8;
+        uint256 qisAVAXBalanceOfVaultPost = qisAVAX.balanceOf(address(vault));
+        uint256 qisAVAXUnderlyingBalance = vault.underlyingPerReceipt() * vault.balanceOf(address(this)) / 1e18;
+        uint256 qisAVAXUnderlyingBalanceOfUser = qisAVAX.exchangeRate() * qisAVAXBalanceOfUserPost / 1e18;
+
+        assertTrue(qisAVAXUnderlyingBalance >= MINT_AMT - vault.FIRST_DONATION());
+        assertTrue(qisAVAXUnderlyingBalanceOfUser >= MINT_AMT);
+        assertTrue(qisAVAXBalanceOfVaultPost == qisAVAXBalanceOfVaultPre - qisAVAXReturnedToUser - totalFeeInUnderlying + 1);
+        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == adminFeeAmt);
+        assertTrue(qisAVAXBalanceOfUserPre + qisAVAXReturnedToUser + callerFeeAmt == qisAVAXBalanceOfUserPost);
+    }
+
+    function testSecondHalfOfMinStatement() public {
+        vault.deposit(address(this), MINT_AMT);
+        assertTrue(qisAVAX.balanceOf(address(vault)) == MINT_AMT);
+        assertTrue(vault.balanceOf(address(this)) == MINT_AMT * 1e10 - vault.FIRST_DONATION());
+
+        vm.warp(vault.lastReinvestTime() + 23 hours);
+        qisAVAX.setExchangeRate(1019166666667000000); // 1 qisAVAX = 1.019166666667 sAVAX
+        vault.compound();
+
+        vm.warp(vault.lastReinvestTime() + 1 + 24 hours); // end of the stale
+        qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
+
+        uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
+        uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
+        uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
+        uint256 totalFee = Math.min((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000, currentUnderlyingBalance - lastUnderlyingBalance);
+        console.log((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000);
+        console.log(currentUnderlyingBalance - lastUnderlyingBalance);
+        console.log(totalFee);
+        vault.compound();
     }
 }
