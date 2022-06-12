@@ -5,10 +5,10 @@ import "src/Vault.sol";
 import {IcToken} from "src/interfaces/cToken.sol";
 import {Math} from "openzeppelin/contracts/utils/math/Math.sol";
 
-contract qisAVAXVault is Vault {
+contract qiTokenVault is Vault {
 
-    IcToken public qisAVAX;
-    uint256 public lastqisAVAXUnderlyingBalance;
+    IcToken public qiToken;
+    uint256 public lastqiTokenUnderlyingBalance;
     uint256 public underlyingBalanceAtLastCompound;
 
     function _initialize(
@@ -29,34 +29,34 @@ contract qisAVAXVault is Vault {
             _maxReinvestStale,
             _WAVAX
         );
-        qisAVAX = IcToken(address(underlying));
+        qiToken = IcToken(address(underlying));
     }
 
     function _getValueOfUnderlyingPre() internal override returns (uint256) {
-        return lastqisAVAXUnderlyingBalance;
+        return lastqiTokenUnderlyingBalance;
     }
 
     function _getValueOfUnderlyingPost() internal override returns (uint256) {
-        return qisAVAX.balanceOfUnderlying(address(this));
+        return qiToken.balanceOfUnderlying(address(this));
     }
 
     function totalHoldings() public override returns (uint256) {
-        return qisAVAX.balanceOfUnderlying(address(this));
+        return qiToken.balanceOfUnderlying(address(this));
     }
 
     function _triggerDepositAction(uint256 amt) internal override {
-        underlyingBalanceAtLastCompound += (amt * qisAVAX.exchangeRateCurrent()) / 1e8;
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        underlyingBalanceAtLastCompound += (amt * qiToken.exchangeRateCurrent()) / 1e8;
+        lastqiTokenUnderlyingBalance = qiToken.balanceOfUnderlying(address(this));
     }
 
     function _triggerWithdrawAction(uint256 amtToReturn) internal override {
-        underlyingBalanceAtLastCompound -= (amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8;
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this)) - ((amtToReturn * qisAVAX.exchangeRateCurrent()) / 1e8);
+        underlyingBalanceAtLastCompound -= (amtToReturn * qiToken.exchangeRateCurrent()) / 1e8;
+        lastqiTokenUnderlyingBalance = qiToken.balanceOfUnderlying(address(this)) - ((amtToReturn * qiToken.exchangeRateCurrent()) / 1e8);
     }
 
     function _doSomethingPostCompound() internal override {
-        underlyingBalanceAtLastCompound = qisAVAX.balanceOfUnderlying(address(this));
-        lastqisAVAXUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(this));
+        underlyingBalanceAtLastCompound = qiToken.balanceOfUnderlying(address(this));
+        lastqiTokenUnderlyingBalance = qiToken.balanceOfUnderlying(address(this));
     }
 
     function _compound() internal override returns (uint256) {
