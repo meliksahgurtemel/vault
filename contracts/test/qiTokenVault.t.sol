@@ -140,7 +140,7 @@ contract TestqisAVAXVault is DSTest {
 
     function testDepositAndCompoundFuzz(uint amt) public {
         vm.assume(amt > 0);
-        vm.assume(amt < 11);
+        vm.assume(amt < 6);
 
         uint256 NEW_MIN_AMT = 1000 * 1e8 * amt;
         qisAVAX.mint(address(this), NEW_MIN_AMT);
@@ -240,7 +240,9 @@ contract TestqisAVAXVault is DSTest {
 
         vm.warp(vault.lastReinvestTime() + 23 hours);
         qisAVAX.setExchangeRate(1019166666667000000); // 1 qisAVAX = 1.019166666667 sAVAX
-        vault.compound();
+        vm.startPrank(USER);
+        vault.deposit(USER, MINT_AMT / 10);
+        vm.stopPrank();
 
         vm.warp(vault.lastReinvestTime() + 1 + 24 hours); // end of the stale
         qisAVAX.setExchangeRate(1020000000000000000); // 1 qisAVAX = 1.02 sAVAX
@@ -248,10 +250,19 @@ contract TestqisAVAXVault is DSTest {
         uint256 currentUnderlyingBalance = qisAVAX.balanceOfUnderlying(address(vault));
         uint256 lastUnderlyingBalance = vault.lastqisAVAXUnderlyingBalance();
         uint256 underlyingBalanceAtLastCompound = vault.underlyingBalanceAtLastCompound();
+        uint256 qisAVAXBalanceOfVaultPre = qisAVAX.balanceOf(address(vault));
         uint256 totalFee = Math.min((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000, currentUnderlyingBalance - lastUnderlyingBalance);
-        console.log((currentUnderlyingBalance - underlyingBalanceAtLastCompound) * (ADMIN_FEE + CALLER_FEE) / 10000);
-        console.log(currentUnderlyingBalance - lastUnderlyingBalance);
-        console.log(totalFee);
+        uint256 totalFeeInUnderlying = totalFee * qisAVAX.balanceOf(address(vault)) / currentUnderlyingBalance;
         vault.compound();
+
+        uint256 qisAVAXBalanceOfVaultPost = qisAVAX.balanceOf(address(vault));
+        uint256 adminFeeAmt = totalFeeInUnderlying * ADMIN_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 callerFeeAmt = totalFeeInUnderlying * CALLER_FEE / (ADMIN_FEE + CALLER_FEE);
+        uint256 qisAVAXBalanceOfUser = vault.balanceOf(USER) * vault.underlyingPerReceipt() / 1e18;
+        uint256 qisAVAXUnderlyingBalanceOfUser = qisAVAXBalanceOfUser * qisAVAX.exchangeRateCurrent() / 1e8;
+
+        assertTrue(qisAVAX.balanceOf(FEE_RECIPIENT) == adminFeeAmt);
+        assertTrue(qisAVAXBalanceOfVaultPost + totalFeeInUnderlying - 1 == qisAVAXBalanceOfVaultPre);
+        assertTrue(qisAVAXUnderlyingBalanceOfUser >= 10 * 1e18);
     }
 }
