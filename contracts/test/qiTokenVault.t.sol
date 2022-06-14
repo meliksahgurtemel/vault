@@ -223,8 +223,9 @@ contract TestqiTokenVault is DSTest {
         uint256 qiTokenReturnedToUser = vaultTokenBalanceOfUserPre * vault.underlyingPerReceipt() / 1e18;
         uint256 qiTokenBalanceOfVaultPre = 110 * 1e8;
         uint256 qiTokenBalanceOfVaultPost = qiToken.balanceOf(address(vault));
-        uint256 qiTokenUnderlyingBalance = vault.underlyingPerReceipt() * vault.balanceOf(address(this)) / 1e18;
-        uint256 qiTokenUnderlyingBalanceOfUser = qiToken.exchangeRate() * qiTokenBalanceOfUserPost / 1e18;
+        uint256 qiTokenBalance = vault.underlyingPerReceipt() * vault.balanceOf(address(this)) / 1e18;
+        uint256 qiTokenUnderlyingBalance = qiTokenBalance * qiToken.exchangeRate() / 1e18;
+        uint256 qiTokenUnderlyingBalanceOfUser = qiTokenBalanceOfUserPost * qiToken.exchangeRate() / 1e18;
 
         assertTrue(qiTokenUnderlyingBalance >= MINT_AMT - vault.FIRST_DONATION());
         assertTrue(qiTokenUnderlyingBalanceOfUser >= MINT_AMT);
